@@ -1,10 +1,14 @@
-// W-Lan & InfluxDB
+// W-Lan & InfluxDB --> https://github.com/tobiasschuerg/InfluxDB-Client-for-Arduino
 #include <WiFi.h>
 #include <InfluxDbClient.h>
 
 // SDM --> https://github.com/reaper7/SDM_Energy_Meter
 #include <SDM.h>
 #include <SoftwareSerial.h>
+
+// JSON --> https://arduinojson.org/
+#include <HTTPClient.h>
+#include <Arduino_JSON.h>
 
 // Definitionen
 #define DEVICE "ESP32"
@@ -29,7 +33,7 @@ SDM sdm(swSerSDM, 9600, NOT_A_PIN, SWSERIAL_8N1, 16, 17);
 float voltage, current, power_active, power_apparent, power_reactive, power_factor, phase_angle, frequency, total_energy_active, total_energy_reactive, import_energy_active, import_energy_reactive, export_energy_active, export_energy_reactive;
 Point sensor("energy");
 
- 
+
 //////////////////////////// SETUP
 
 void setup() 
@@ -97,7 +101,7 @@ void loop() {
   export_energy_active = sdm.readVal(SDM_IMPORT_REACTIVE_ENERGY);
   export_energy_reactive = sdm.readVal(SDM_EXPORT_REACTIVE_ENERGY);
   Serial.println("Sensoren ausgelesen");
-
+  // In den Stack hinzufügen
   sensor.addField("WIFI", WiFi.RSSI());
   sensor.addField("voltage", voltage);
   sensor.addField("current", current);
@@ -113,6 +117,21 @@ void loop() {
   sensor.addField("import_energy_reactive", import_energy_reactive);
   sensor.addField("export_energy_active", export_energy_active);
   sensor.addField("export_energy_reactive", export_energy_reactive);
+
+  // Shelly auslesen
+  HTTPClient http; //Instanz von HTTPClient starten
+    http.begin("http://192.168.0.121/rpc/EM.GetStatus?id=0"); //Abfrage-URL der Shelly
+    int httpCode = http.GET(); //Antwort von Shelly abrufen
+    if (httpCode == 200) {
+      String payload = http.getString(); //Daten in eine Variable speichern
+      DynamicJsonDocument doc(1024);
+      deserializeJson(doc, payload);
+      // https://arduinojson.org/v6/api/jsonobject/begin_end/
+      JsonObject root = doc.as<JsonObject>();
+      for (JsonPair kv : root) {
+        sensor.addField(kv.key().c_str(), kv.value().as<float>());
+      }
+    }
 
   
   // Print & Check
